@@ -229,7 +229,7 @@ public abstract class RecyclerViewFragment extends Fragment {
      * @see #setPaginationMode(PaginationMode) To defined the pagination mode.
      * @see #disablePagination() To disable the paginatioin mode. Calling this won't allow {@code onLoadingMore()} to request data.
      */
-    public void onLoadingMore() {}
+    public void onLoadingMore() { Log.v(TAG, "Requesting more data"); }
 
     private void ensureRecycler() {
         if (mRecycler != null) {
@@ -312,15 +312,13 @@ public abstract class RecyclerViewFragment extends Fragment {
             int firstVisibleItemPos = LayoutManagerHelper.findFirstVisibleItemPosition(mLayoutManager);
 
             int lastVisibleItemPos = firstVisibleItemPos + visibleItemCount;
-            //TODO Make use of mNumOfItemsFromBottomToLoadMore.
-            boolean allowPagination = totalItemCount - lastVisibleItemPos < DEFAULT_NUM_OF_ITEMS_FROM_BOTTOM_TO_LOAD_MORE;
+            boolean allowPagination = totalItemCount - lastVisibleItemPos < (mNumOfItemsFromBottomToLoadMore == -1 ? DEFAULT_NUM_OF_ITEMS_FROM_BOTTOM_TO_LOAD_MORE : mNumOfItemsFromBottomToLoadMore);
 
             /**
              * If the current visible item is < than the number of required item counting from the bottom,
              * no other request is still in progress and there is a next max Id then go ahead.
              */
             if (allowPagination && isPaginationEnabled()) {
-                Log.v(TAG, "Requesting more data");
                 onLoadingMore();
             }
         }
