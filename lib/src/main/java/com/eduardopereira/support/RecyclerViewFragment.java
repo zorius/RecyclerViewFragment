@@ -19,14 +19,19 @@ package com.eduardopereira.support;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
+import android.support.annotation.IntRange;
+import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+
+import com.eduardopereira.support.utils.LayoutManagerHelper;
 
 /**
  * A fragment that displays a recycler view of items by binding to a data source such as
@@ -91,8 +96,10 @@ import android.view.ViewGroup;
  */
 public abstract class RecyclerViewFragment extends Fragment {
 
-    final private Handler mHandler = new Handler();
+    private static final String TAG = "RecyclerViewFragment";
+    private static final double DEFAULT_NUM_OF_ITEMS_FROM_BOTTOM_TO_LOAD_MORE = 5;
 
+    final private Handler mHandler = new Handler();
     final private Runnable mRequestFocus = new Runnable() {
         public void run() {
             mRecycler.focusableViewAvailable(mRecycler);
@@ -103,6 +110,15 @@ public abstract class RecyclerViewFragment extends Fragment {
     private RecyclerView.LayoutManager mLayoutManager;
     private RecyclerView.Adapter mAdapter;
     private RecyclerView.OnItemTouchListener mDefaultOnItemTouchListener = new RecyclerItemClickListener(getActivity());
+    private RecyclerView.OnScrollListener mDefaultOnScrollListener = new RecyclerScrollListener();
+    private PaginationMode mPaginationMode = PaginationMode.ENABLED;
+    private int mNumOfItemsFromBottomToLoadMore = -1;
+
+    public enum PaginationMode {
+        ENABLED,
+        LOADING,
+        DISABLED
+    }
 
     /**
      * Provide default implementation to return a simple recycler view.
@@ -132,6 +148,7 @@ public abstract class RecyclerViewFragment extends Fragment {
     public void onDestroyView() {
         mHandler.removeCallbacks(mRequestFocus);
         mRecycler.removeOnItemTouchListener(mDefaultOnItemTouchListener);
+        mRecycler.removeOnScrollListener(mDefaultOnScrollListener);
         mRecycler = null;
         mLayoutManager = null;
         mAdapter = null;
@@ -149,7 +166,7 @@ public abstract class RecyclerViewFragment extends Fragment {
     /**
      * Provide the RecyclerView.Adapter for the recycler view.
      */
-    public void setRecyclerAdapter(RecyclerView.Adapter adapter) {
+    public void setRecyclerAdapter(@Nullable RecyclerView.Adapter adapter) {
         mAdapter = adapter;
 
         if (mRecycler != null) {
@@ -167,7 +184,7 @@ public abstract class RecyclerViewFragment extends Fragment {
     /**
      * Provide the RecyclerView.LayoutManager for the recycler view.
      */
-    public void setLayoutManager(RecyclerView.LayoutManager layoutManager) {
+    public void setLayoutManager(@Nullable RecyclerView.LayoutManager layoutManager) {
         mLayoutManager = layoutManager;
 
         if (mRecycler != null) {
@@ -203,6 +220,17 @@ public abstract class RecyclerViewFragment extends Fragment {
      */
     public void onRecyclerItemClick(RecyclerView recyclerView, View view, int position) { }
 
+    /**
+     * This method will be called when recycler view as reached the bottom. This can be useful to request more data to be added to its adapter.
+     * To make this work the pagination mode must not be disabled.
+     *
+     * Subclasses should override.
+     *
+     * @see #setPaginationMode(PaginationMode) To defined the pagination mode.
+     * @see #disablePagination() To disable the paginatioin mode. Calling this won't allow {@code onLoadingMore()} to request data.
+     */
+    public void onLoadingMore() { Log.v(TAG, "Requesting more data"); }
+
     private void ensureRecycler() {
         if (mRecycler != null) {
             return;
@@ -232,6 +260,7 @@ public abstract class RecyclerViewFragment extends Fragment {
         mRecycler.setLayoutManager(getLayoutManager());
         mRecycler.setHasFixedSize(true);
         mRecycler.addOnItemTouchListener(mDefaultOnItemTouchListener);
+        mRecycler.addOnScrollListener(mDefaultOnScrollListener);
         if (mAdapter != null) {
             RecyclerView.Adapter adapter = mAdapter;
             mAdapter = null;
@@ -268,5 +297,63 @@ public abstract class RecyclerViewFragment extends Fragment {
 
         @Override
         public void onRequestDisallowInterceptTouchEvent(boolean disallowIntercept) { /** Do nothing! */ }
+    }
+
+    private class RecyclerScrollListener extends RecyclerView.OnScrollListener {
+
+        @Override
+        public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+            super.onScrolled(recyclerView, dx, dy);
+
+            int totalItemCount = mLayoutManager.getItemCount();
+            if (totalItemCount == 0) return;
+
+            int visibleItemCount = mLayoutManager.getChildCount();
+            int firstVisibleItemPos = LayoutManagerHelper.findFirstVisibleItemPosition(mLayoutManager);
+
+            int lastVisibleItemPos = firstVisibleItemPos + visibleItemCount;
+            boolean allowPagination = totalItemCount - lastVisibleItemPos < (mNumOfItemsFromBottomToLoadMore == -1 ? DEFAULT_NUM_OF_ITEMS_FROM_BOTTOM_TO_LOAD_MORE : mNumOfItemsFromBottomToLoadMore);
+
+            /**
+             * If the current visible item is < than the number of required item counting from the bottom,
+             * no other request is still in progress and there is a next max Id then go ahead.
+             */
+            if (allowPagination && isPaginationEnabled()) {
+                onLoadingMore();
+            }
+        }
+    }
+
+    /**
+     * Sets the number of items counting from the bottom of the recycler view to start calling {@link #onLoadingMore()}.
+     * @param itemsFromBottom Defines the number of items counting from the bottom. The default value is defined by {@link #DEFAULT_NUM_OF_ITEMS_FROM_BOTTOM_TO_LOAD_MORE}.
+     */
+    public void setNumOfItemsFromBottomToLoadMore (@IntRange(from=0) int itemsFromBottom) {
+        mNumOfItemsFromBottomToLoadMore = itemsFromBottom;
+    }
+
+    /**
+     * Sets the pagination mode.
+     *
+     * @param mode The pagination mode to be defined. It can assume all the values defined in {@link com.eduardopereira.support.RecyclerViewFragment.PaginationMode}.
+     */
+    public void setPaginationMode(PaginationMode mode) {
+        mPaginationMode = mode;
+    }
+
+    /**
+     * Disables the pagination mode. Calling this will prevent {@link #onLoadingMore()} of being called.
+     * Calling {@link #setPaginationMode(PaginationMode)} setPaginationMode(PaginationMode.DISABLED) does the same effect.
+     */
+    public void disablePagination() {
+        mPaginationMode = PaginationMode.DISABLED;
+    }
+
+    /**
+     * Checks if the pagination mode is enabled.
+     * @return {@code true} if enabled of {@code false} otherwise.
+     */
+    private boolean isPaginationEnabled() {
+        return (mPaginationMode != PaginationMode.LOADING && mPaginationMode != PaginationMode.DISABLED);
     }
 }
