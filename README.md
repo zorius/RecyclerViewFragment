@@ -5,7 +5,9 @@ Download
 ========
 Via Gradle:
 ```groovy
-// Very soon available.
+dependencies {
+   compile 'com.eduardopereira.support:recyclerviewfragment:1.0.1'
+}
 ```
 Sample
 ======
